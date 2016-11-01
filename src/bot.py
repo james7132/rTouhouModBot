@@ -1,19 +1,8 @@
 import praw
 import time
-import json
-from collections import namedtuple
+from model import * 
+from util import *
 from urllib.parse import urlparse
-
-def load_list(filename):
-    with open(filename, 'r') as target_file:
-        return set(s.replace('\n', '') for s in target_file)
-
-def convert(name, dictionary):
-    return namedtuple(name, dictionary.keys())(**dictionary)
-
-def load_json(filename):
-    with open(filename, 'r') as target_file:
-        return convert("json", json.load(target_file))
 
 credentials = load_json("./credentials.json")
 
@@ -27,10 +16,15 @@ domain_whitelist = load_list("./domain_whitelist.txt")
 # A list of domains that are sure to be image rehosts
 domain_blacklist = load_list("./domain_blacklist.txt")
 
-print("Domain Whitelist: ", domain_whitelist)
-print("Domain Blacklist: ", domain_blacklist)
-
 def main():
+    #TODO(james7132): Switch to proper logging
+    print("Flair Whitelist: ", flair_whitelist)
+    print("Fliar Blacklist: ", flair_blacklist)
+
+    print("Domain Whitelist: ", domain_whitelist)
+    print("Domain Blacklist: ", domain_blacklist)
+
+    #TODO(james7132): Switch to OAuth2 based authentication
     reddit = praw.Reddit('/r/touhou moderator written by /u/james7132 in PRAW')
     reddit.login(username=credentials.username,
             password=credentials.password,disable_warning=True)
