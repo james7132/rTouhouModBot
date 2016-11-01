@@ -1,4 +1,5 @@
 import praw
+import re
 import time
 from model import * 
 from util import *
@@ -7,14 +8,14 @@ from urllib.parse import urlparse
 credentials = load_json("./credentials.json")
 
 # A list of flairs that are not image rehosts
-flair_whitelist = load_list("./flair_whitelist.txt")
+flair_whitelist = load_regex_list("./flair_whitelist.txt")
 # A list of flairs that are sure to be image rehosts
-flair_blacklist = load_list("./flair_blacklist.txt")
+flair_blacklist = load_regex_list("./flair_blacklist.txt")
 
 # A list of domains that are whitelisted as OC
-domain_whitelist = load_list("./domain_whitelist.txt")
+domain_whitelist = load_regex_list("./domain_whitelist.txt")
 # A list of domains that are sure to be image rehosts
-domain_blacklist = load_list("./domain_blacklist.txt")
+domain_blacklist = load_regex_list("./domain_blacklist.txt")
 
 def main():
     #TODO(james7132): Switch to proper logging
@@ -35,7 +36,11 @@ def main():
         for submission in subreddit.get_new():
             url = urlparse(submission.url)
             if(submission.link_flair_text is not None):
-                print(submission.link_flair_text,url.hostname)
+                print(submission.link_flair_text,url.hostname,
+                        any(pattern.match(url.hostname) for pattern in
+                            domain_blacklist),
+                        any(pattern.match(url.hostname) for pattern in
+                                domain_whitelist))
         time.sleep(60)
 
 if __name__ == "__main__":

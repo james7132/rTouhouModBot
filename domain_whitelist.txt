@@ -1,2 +1,2 @@
-www.pixiv.net
-www.reddit.com
+(.*?).?pixiv.net
+(.*?).?reddit.com
