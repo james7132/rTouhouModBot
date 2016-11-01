@@ -1,2 +1,3 @@
 (.*?).?pixiv.net
 (.*?).?reddit.com
+(.*?).?deviantart.com
