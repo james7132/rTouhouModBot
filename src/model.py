@@ -1,11 +1,12 @@
 import os
+from util import *
 from sqlalchemy import *
 from sqlalchemy.orm import *
 from sqlalchemy.ext.declarative import declarative_base
 
 db_path = "/db/r_touhou_mod.db"
 
-engine = create_engine('sqlite:///{0}'.format(db_path), echo=True)
+engine = create_engine('sqlite:///{0}'.format(db_path))
 
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
@@ -13,15 +14,15 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = 'users'
 
-    fullname = Column(String, primary_key=True)
+    id = Column(String, primary_key=True, autoincrement=False)
 
 class Post(Base):
     __tablename__ = 'posts'
 
-    fullname = Column(String, primary_key=True)
+    id = Column(String, primary_key=True, autoincrement=False)
     date = Column(DateTime)
-    is_image = Column(Boolean)
-    author_fullname = Column(String, ForeignKey('users.fullname'))
+    status = Column(Enum(Decision))
+    author_id = Column(String, ForeignKey('users.id'))
 
 Post.author = relationship('User', back_populates='posts')
 User.posts = relationship('Post', order_by=Post.date, back_populates='author')

@@ -1,6 +1,14 @@
 import json
+from enum import Enum, unique
 from collections import namedtuple
 import re
+
+class Decision(Enum):
+    other = 1               # this post is not subject to moderation
+    watch = 2               # watch this post for further changes
+    found_fanart = 3        # post is a piece of found fanart
+    original_content = 4    # post is original content
+    invalid_source = 5      # post is found fanart with improper sourcing
 
 def load_regex_list(filename):
     """ Loads all lines in a file as seperate strings.

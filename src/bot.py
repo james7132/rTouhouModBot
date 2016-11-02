@@ -3,7 +3,7 @@ import sys
 import praw
 import re
 import time
-from enum import Enum, unique
+from datetime import datetime
 from model import * 
 from util import *
 from urllib.parse import urlparse
@@ -31,47 +31,32 @@ domain_whitelist = load_regex_list("./domain_whitelist.txt")
 # A list of domains that are sure to be image rehosts
 domain_blacklist = load_regex_list("./domain_blacklist.txt")
 
-completed = set()
-to_watch = list()
-
-class Decision(Enum):
-    other = 1               # this post is not subject to moderation
-    watch = 2               # watch this post for further changes
-    found_fanart = 3        # post is a piece of found fanart
-    original_content = 4    # post is original content
-    invalid_source = 5      # post is found fanart with improper sourcing
-
 def check_list(check, regex_list):
     return any(pattern.match(check) for pattern in regex_list)
 
-def check_flair(post):
-    if post.link_flair_text is None:
+def check_flair(flair):
+    if flair is None:
         return Decision.watch 
-    flair = post.link_flair_text
     if(check_list(flair, flair_whitelist)):
         return Decision.original_content
     elif(check_list(flair, flair_blacklist)):
         return Decision.found_fanart
     return Decision.other
 
-def check_domain(post, flair_result):
-    hostname = urlparse(post.url).hostname;
+def check_domain(url, flair_result):
+    hostname = urlparse(url).hostname;
     if(check_list(hostname, domain_blacklist)):
         return Decision.invalid_source
     return flair_result
 
-def check_post(post):
-    url = urlparse(post.url)
-    result = None 
-    reason = None
-    flair = post.link_flair_text
-
-    flair_check = check_flair(post)
+def check_post(is_self, flair, url):
+    if is_self:
+        return Decision.other
+    flair_check = check_flair(flair)
     if flair_check is not Decision.found_fanart:
         return flair_check
-
     # flair_check assumed to be false here
-    return check_domain(post, flair_check)
+    return check_domain(url, flair_check)
 
 def main():
     logger.info("Flair Whitelist: %s", [regex.pattern for regex in flair_whitelist])
@@ -87,17 +72,35 @@ def main():
             log_requests=1,
             disable_warning=True)
     logger.info('Logged in')
-    subreddit = reddit.get_subreddit('touhou')
+    subreddit = reddit.get_subreddit('james7132')
     logger.info('Subreddit: {0}'.format(subreddit))
+    session = Session()
     while True:
         for post in subreddit.get_new():
-            if(post.id in completed):
+            db_post = session.query(Post).filter_by(id = post.id).first()
+            if db_post is not None and db_post.status != Decision.watch:
                 continue
-            logger.info("New Post:")
-            logger.info("Flair: %s", post.link_flair_text)
-            logger.info("Url Domain: %s", urlparse(post.url).hostname)
-            logger.info("Post Check: %s", check_post(post)) 
-        time.sleep(60)
+            author_id = post.author.id
+            author = session.query(User).filter_by(id = author_id).first()
+            if author is None:
+                author = User(id = author_id)
+                session.add(author)
+            if db_post is None:
+                db_post = Post()
+                author.posts.append(db_post)
+            flair = post.link_flair_text
+            url = post.url
+            db_post.id = post.id
+            db_post.date = datetime.fromtimestamp(post.created)
+            db_post.status = check_post(post.is_self, flair, url)
+            logger.info(("New Post: {"
+                         "Flair: \"%s\" "
+                         "Url Domain \"%s\" "
+                         "Post Check %s}") % (flair, 
+                        urlparse(url).hostname,
+                        db_post.status))
+            session.commit()
+        time.sleep(10)
 
 if __name__ == "__main__":
     main()
