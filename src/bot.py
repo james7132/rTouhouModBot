@@ -1,3 +1,5 @@
+import logging
+import sys
 import praw
 import re
 import time
@@ -5,6 +7,17 @@ from enum import Enum, unique
 from model import * 
 from util import *
 from urllib.parse import urlparse
+
+logger = logging.getLogger("bot")
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(formatter)
+
+logger.addHandler(ch)
 
 credentials = load_json("./credentials.json")
 
@@ -62,25 +75,29 @@ def check_post(post):
 
 def main():
     #TODO(james7132): Switch to proper logging
-    print("Flair Whitelist: ", [regex.pattern for regex in flair_whitelist])
-    print("Fliar Blacklist: ", [regex.pattern for regex in flair_blacklist])
+    logger.info("Flair Whitelist: %s", [regex.pattern for regex in flair_whitelist])
+    logger.info("Fliar Blacklist: %s", [regex.pattern for regex in flair_blacklist])
 
-    print("Domain Whitelist: ", [regex.pattern for regex in domain_whitelist ])
-    print("Domain Blacklist: ", [regex.pattern for regex in domain_blacklist ])
+    logger.info("Domain Whitelist: %s", [regex.pattern for regex in domain_whitelist ])
+    logger.info("Domain Blacklist: %s", [regex.pattern for regex in domain_blacklist ])
 
     #TODO(james7132): Switch to OAuth2 based authentication
     reddit = praw.Reddit('/r/touhou moderator written by /u/james7132 in PRAW')
     reddit.login(username=credentials.username,
-            password=credentials.password,disable_warning=True)
-    print('Logged in')
+            password=credentials.password,
+            log_requests=1,
+            disable_warning=True)
+    logger.info('Logged in')
     subreddit = reddit.get_subreddit('touhou')
-    print('Subreddit: {0}'.format(subreddit))
+    logger.info('Subreddit: {0}'.format(subreddit))
     while True:
         for post in subreddit.get_new():
             if(post.id in completed):
                 continue
-            print(post.link_flair_text, urlparse(post.url).hostname,
-                    check_post(post))
+            logger.info("New Post:")
+            logger.info("Flair: %s", post.link_flair_text)
+            logger.info("Url Domain: %s", urlparse(post.url).hostname)
+            logger.info("Post Check: %s", check_post(post)) 
         time.sleep(60)
 
 if __name__ == "__main__":
