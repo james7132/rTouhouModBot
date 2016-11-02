@@ -74,7 +74,6 @@ def check_post(post):
     return check_domain(post, flair_check)
 
 def main():
-    #TODO(james7132): Switch to proper logging
     logger.info("Flair Whitelist: %s", [regex.pattern for regex in flair_whitelist])
     logger.info("Fliar Blacklist: %s", [regex.pattern for regex in flair_blacklist])
 
