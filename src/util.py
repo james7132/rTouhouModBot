@@ -9,6 +9,7 @@ class Decision(Enum):
     found_fanart = 3        # post is a piece of found fanart
     original_content = 4    # post is original content
     invalid_source = 5      # post is found fanart with improper sourcing
+    removed = 6             # post was removed
 
 def load_regex_list(filename):
     """ Loads all lines in a file as seperate strings.

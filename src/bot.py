@@ -1,9 +1,10 @@
 import logging
 import sys
-import praw
 import re
 import time
-from datetime import datetime
+from praw import *
+from praw.objects import *
+from datetime import datetime, timedelta
 from model import * 
 from util import *
 from urllib.parse import urlparse
@@ -19,7 +20,15 @@ ch.setFormatter(formatter)
 
 logger.addHandler(ch)
 
+target_subreddit = "touhou"
+owner = "james7132"
+remove = False
 credentials = load_json("./credentials.json")
+
+limits = {
+        timedelta(days=1) : 1,
+        timedelta(days=7) : 4
+    }
 
 # A list of flairs that are not image rehosts
 flair_whitelist = load_regex_list("./flair_whitelist.txt")
@@ -30,6 +39,8 @@ flair_blacklist = load_regex_list("./flair_blacklist.txt")
 domain_whitelist = load_regex_list("./domain_whitelist.txt")
 # A list of domains that are sure to be image rehosts
 domain_blacklist = load_regex_list("./domain_blacklist.txt")
+
+session = Session()
 
 def check_list(check, regex_list):
     return any(pattern.match(check) for pattern in regex_list)
@@ -49,14 +60,64 @@ def check_domain(url, flair_result):
         return Decision.invalid_source
     return flair_result
 
-def check_post(is_self, flair, url):
-    if is_self:
+def check_post(post):
+    if post.banned_by is not None:
+        return Decision.removed
+    if post.is_self:
         return Decision.other
+    flair = post.link_flair_text
     flair_check = check_flair(flair)
     if flair_check is not Decision.found_fanart:
         return flair_check
     # flair_check assumed to be false here
-    return check_domain(url, flair_check)
+    return check_domain(post.url, flair_check)
+
+def process_post(post, db_post, log, log_check=None):
+    db_post.id = post.id
+    db_post.date = datetime.fromtimestamp(post.created)
+    db_post.status = check_post(post)
+    if log_check is None or log_check(post, db_post):
+        logger.info(("%s: {"
+            "Flair: \"%s\" "
+            "Url Domain \"%s\" "
+            "Post Check %s}") % (log,
+                post.link_flair_text, 
+                urlparse(post.url).hostname,
+                db_post.status))
+    session.commit()
+    if db_post.status == Decision.invalid_source:
+        if remove:
+            post.add_comment(("This post has been deemed to be improperly sourcing"
+                " the posted material and will be removed."))
+            post.remove()
+            db_post.status = Decision.removed
+        else:
+            post.report("Invalid Sourcing.")
+            logger.info("Reported post \"%s\" for invalid sourcing" % db_post.id)
+        session.commit()
+    elif db_post.status == Decision.found_fanart:
+        author = post.author.id
+        for timespan, limit_count in limits.items():
+            search_breadth = datetime.now() - timespan
+            count = session.query(Post) \
+                .filter_by(status = Decision.found_fanart) \
+                .filter_by(author_id = author) \
+                .filter(Post.date >= search_breadth).count()
+            logger.info("%s has posted %s fanart posts in the last %s" %
+                    (post.author, count, timespan))
+            if limit_count < count:
+                if remove:
+                    post.add_comment(("The author of this post has posted more"
+                        " than %s found fanart posts in the last %s "
+                        " the posted material and will be removed.") %
+                        (limit_count, timespan))
+                    post.remove()
+                    db_post.status = Decision.removed
+                else:
+                    post.report("More than %s found fanart posts in the last %s"
+                            % (limit_count, timespan))
+                    logger.info("Reported post \"%s\" for exceeding time limits" % db_post.id)
+                break
 
 def main():
     logger.info("Flair Whitelist: %s", [regex.pattern for regex in flair_whitelist])
@@ -66,40 +127,40 @@ def main():
     logger.info("Domain Blacklist: %s", [regex.pattern for regex in domain_blacklist ])
 
     #TODO(james7132): Switch to OAuth2 based authentication
-    reddit = praw.Reddit('/r/touhou moderator written by /u/james7132 in PRAW')
+    reddit = Reddit('/r/%s moderator written by /u/%sin PRAW' %
+            (target_subreddit, owner))
     reddit.login(username=credentials.username,
             password=credentials.password,
             log_requests=1,
             disable_warning=True)
     logger.info('Logged in')
-    subreddit = reddit.get_subreddit('james7132')
+    subreddit = reddit.get_subreddit(target_subreddit)
     logger.info('Subreddit: {0}'.format(subreddit))
-    session = Session()
     while True:
+        logger.info("Checking for new posts...")
         for post in subreddit.get_new():
             db_post = session.query(Post).filter_by(id = post.id).first()
-            if db_post is not None and db_post.status != Decision.watch:
+            if db_post is not None:
                 continue
             author_id = post.author.id
             author = session.query(User).filter_by(id = author_id).first()
             if author is None:
                 author = User(id = author_id)
                 session.add(author)
-            if db_post is None:
-                db_post = Post()
-                author.posts.append(db_post)
-            flair = post.link_flair_text
-            url = post.url
-            db_post.id = post.id
-            db_post.date = datetime.fromtimestamp(post.created)
-            db_post.status = check_post(post.is_self, flair, url)
-            logger.info(("New Post: {"
-                         "Flair: \"%s\" "
-                         "Url Domain \"%s\" "
-                         "Post Check %s}") % (flair, 
-                        urlparse(url).hostname,
-                        db_post.status))
+            db_post = Post()
+            author.posts.append(db_post)
+            process_post(post,
+                    db_post,
+                    "New Post")
             session.commit()
+        logger.info("Checking watched posts...")
+        for db_post in session.query(Post).filter_by(status =
+                Decision.watch).all():
+            post = reddit.get_info(thing_id="t3_" + db_post.id)
+            process_post(post, 
+                db_post, 
+                "Updated Post",
+                lambda p, dp: dp.status != Decision.watch)
         time.sleep(10)
 
 if __name__ == "__main__":
