@@ -137,7 +137,6 @@ def main():
     subreddit = reddit.get_subreddit(target_subreddit)
     logger.info('Subreddit: {0}'.format(subreddit))
     while True:
-        logger.info("Checking for new posts...")
         for post in subreddit.get_new():
             db_post = session.query(Post).filter_by(id = post.id).first()
             if db_post is not None:
@@ -153,7 +152,6 @@ def main():
                     db_post,
                     "New Post")
             session.commit()
-        logger.info("Checking watched posts...")
         for db_post in session.query(Post).filter_by(status =
                 Decision.watch).all():
             post = reddit.get_info(thing_id="t3_" + db_post.id)
