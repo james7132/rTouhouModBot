@@ -1,3 +1,4 @@
 (.*?).?imgur.com
 i.redd(.*)
+(.*?)booru.*
 (.*?).?awwni.me
