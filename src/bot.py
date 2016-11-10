@@ -18,7 +18,12 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)
 ch.setFormatter(formatter)
 
+fh = logging.FileHandler('/var/log/rtouhoumod/bot.log')
+fh.setLevel(logging.DEBUG)
+fh.setFormatter(formatter)
+
 logger.addHandler(ch)
+logger.addHandler(fh)
 
 target_subreddit = "touhou"
 owner = "james7132"
@@ -98,11 +103,12 @@ def process_post(post, db_post, log, log_check=None):
     elif db_post.status == Decision.found_fanart:
         author = post.author.id
         for timespan, limit_count in limits.items():
-            search_breadth = datetime.now() - timespan
+            final_date = db_post.date
+            initial_date = db_post.date - timespan
             count = session.query(Post) \
                 .filter_by(status = Decision.found_fanart) \
                 .filter_by(author_id = author) \
-                .filter(Post.date >= search_breadth).count()
+                .filter(Post.date.between(initial_date, final_date)).count()
             logger.info("%s has posted %s fanart posts in the last %s" %
                     (post.author, count, timespan))
             if limit_count < count:
@@ -119,13 +125,7 @@ def process_post(post, db_post, log, log_check=None):
                     logger.info("Reported post \"%s\" for exceeding time limits" % db_post.id)
                 break
 
-def main():
-    logger.info("Flair Whitelist: %s", [regex.pattern for regex in flair_whitelist])
-    logger.info("Fliar Blacklist: %s", [regex.pattern for regex in flair_blacklist])
-
-    logger.info("Domain Whitelist: %s", [regex.pattern for regex in domain_whitelist ])
-    logger.info("Domain Blacklist: %s", [regex.pattern for regex in domain_blacklist ])
-
+def main_loop():
     #TODO(james7132): Switch to OAuth2 based authentication
     reddit = Reddit('/r/%s moderator written by /u/%sin PRAW' %
             (target_subreddit, owner))
@@ -156,10 +156,26 @@ def main():
                 Decision.watch).all():
             post = reddit.get_info(thing_id="t3_" + db_post.id)
             process_post(post, 
-                db_post, 
-                "Updated Post",
-                lambda p, dp: dp.status != Decision.watch)
-        time.sleep(10)
+                    db_post, 
+                    "Updated Post",
+                    lambda p, dp: dp.status != Decision.watch)
+            time.sleep(10)
+
+def main():
+    logger.info("Flair Whitelist: %s", [regex.pattern for regex in flair_whitelist])
+    logger.info("Fliar Blacklist: %s", [regex.pattern for regex in flair_blacklist])
+
+    logger.info("Domain Whitelist: %s", [regex.pattern for regex in domain_whitelist ])
+    logger.info("Domain Blacklist: %s", [regex.pattern for regex in domain_blacklist ])
+
+    while True:
+        try:
+            main_loop()
+        except KeyboardInterrupt:
+            log.info('KeyboardInterrupt recieved, shutting down')
+            break
+        except:
+            logger.error(sys.exc_info()[0])
 
 if __name__ == "__main__":
     main()
