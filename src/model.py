@@ -23,6 +23,8 @@ class Post(Base):
     date = Column(DateTime)
     status = Column(Enum(Decision))
     author_id = Column(String, ForeignKey('users.id'))
+    reported = Column(Boolean)
+    flair_warned = Column(Boolean)
 
 Post.author = relationship('User', back_populates='posts')
 User.posts = relationship('Post', order_by=Post.date, back_populates='author')
