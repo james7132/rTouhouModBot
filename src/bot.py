@@ -3,7 +3,6 @@ import sys
 import re
 import time
 from praw import *
-from praw.objects import *
 from datetime import datetime, timedelta
 from model import *
 from util import *
@@ -32,9 +31,15 @@ remove = False
 credentials = load_json("./credentials.json")
 
 limits = {
-    timedelta(days=1): 1,
-    timedelta(days=7): 4
+    timedelta(days=1): 3,
+    timedelta(days=7): 7
 }
+
+flair_warning = timedelta(hours=1)
+
+warning_text = "./flair_warning.md"
+with open(warning_text, 'r') as target_file:
+    warning_text = target_file.read()
 
 # A list of flairs that are not image rehosts
 flair_whitelist = load_regex_list("./flair_whitelist.txt")
@@ -82,12 +87,26 @@ def check_post(post):
     # flair_check assumed to be false here
     return check_domain(post.url, flair_check)
 
+def warn_flair(post, db_post):
+    if db_post.flair_warned or post.link_flair_text is not None or post.author is None:
+        return
+    post.author.message("Reminder to flair your post on /r/%s" % target_subreddit,
+            warning_text % (post.shortlink))
+    logger.info("Warned %s due to lack of flair on their post: %s" %
+            (post.author.name, post.shortlink))
+    db_post.flair_warned = True
+    session.commit()
+
 
 def process_post(post, db_post, log, log_check=None):
     db_post.id = post.id
     db_post.date = datetime.fromtimestamp(post.created)
     old_status = db_post.status
     db_post.status = check_post(post)
+    if not db_post.flair_warned and post.link_flair_text is None and datetime.now() - db_post.date >= flair_warning:
+        warn_flair(post, db_post)
+    elif db_post.flair_warned is None:
+        db_post.flair_warned = False
     if log_check is None or old_status != db_post.status:
         logger.info(("%s: {"
                      "Flair: \"%s\" "
@@ -137,27 +156,32 @@ def process_post(post, db_post, log, log_check=None):
                         "Reported post \"%s\" for exceeding time limits" % db_post.id)
                 db_post.reported = True
                 break
+    session.merge(db_post)
     session.commit()
 
 
 def main_loop():
-    #TODO(james7132): Switch to OAuth2 based authentication
-    reddit = Reddit('/r/%s moderator written by /u/%sin PRAW' %
+    reddit = Reddit(client_id=credentials.client_id,
+            client_secret=credentials.client_secret,
+            username=credentials.username,
+            password=credentials.password,
+            user_agent='/r/%s moderator written by /u/%sin PRAW' %
                     (target_subreddit, owner))
-    reddit.login(username=credentials.username,
-                 password=credentials.password,
-                 log_requests=1,
-                 disable_warning=True)
     logger.info('Logged in')
-    subreddit = reddit.get_subreddit(target_subreddit)
+    subreddit = reddit.subreddit(target_subreddit)
     logger.info('Subreddit: {0}'.format(subreddit))
     longest_period = max(limits.keys()) * 2
     while True:
-        for post in subreddit.get_new():
+        for post in subreddit.new():
             db_post = session.query(Post).filter_by(id=post.id).first()
             if db_post is not None:
                 continue
-            author_id = post.author.id
+            try:
+                author_id = post.author.id
+            except KeyboardInterrupt:
+                raise
+            except:
+                continue
             author = session.query(User).filter_by(id=author_id).first()
             if author is None:
                 author = User(id=author_id)
@@ -172,7 +196,7 @@ def main_loop():
         back = now - longest_period
         for db_post in session.query(Post).filter(
                 Post.date.between(back, now)).all():
-            post = reddit.get_info(thing_id="t3_" + db_post.id)
+            post = next(reddit.info(["t3_" + db_post.id]))
             process_post(post,
                          db_post,
                          "Updated Post",
