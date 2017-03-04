@@ -10,6 +10,7 @@ class Decision(Enum):
     original_content = 4    # post is original content
     invalid_source = 5      # post is found fanart with improper sourcing
     removed = 6             # post was removed
+    outdated = 7            # post was watched, but is far past the watch date
 
 def load_regex_list(filename):
     """ Loads all lines in a file as seperate strings.
@@ -25,7 +26,7 @@ def load_regex_list(filename):
 
 def convert(name, dictionary):
     """ Converts a dictionary into a namedtuple
-        
+
         Args:
             name (str): the name of the tuple
             dictionary (dict): the dictionary to convert
@@ -37,7 +38,7 @@ def convert(name, dictionary):
 
 def load_json(filename):
     """ Loads a JSON file as a namedtuple
-        
+
         Args:
             filename (str): The file path to the file to load.
 

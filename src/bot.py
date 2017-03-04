@@ -32,8 +32,9 @@ credentials = load_json("./credentials.json")
 
 limits = {
     timedelta(days=1): 3,
-    timedelta(days=7): 7
 }
+
+watch_limit = max(limits.keys())
 
 flair_warning = timedelta(hours=1)
 
@@ -82,6 +83,9 @@ def check_post(post):
         return Decision.other
     flair = post.link_flair_text
     flair_check = check_flair(flair)
+    created = datetime.fromtimestamp(post.created)
+    if flair_check == Decision.watch and datetime.now() > (created + watch_limit):
+        return Decision.outdated
     if flair_check is not Decision.found_fanart:
         return flair_check
     # flair_check assumed to be false here
@@ -159,7 +163,6 @@ def process_post(post, db_post, log, log_check=None):
     session.merge(db_post)
     session.commit()
 
-
 def main_loop():
     reddit = Reddit(client_id=credentials.client_id,
             client_secret=credentials.client_secret,
@@ -201,7 +204,7 @@ def main_loop():
                          db_post,
                          "Updated Post",
                          lambda p, dp: dp.status != Decision.watch)
-        time.sleep(10)
+        time.sleep(300)
 
 
 def main():
@@ -222,7 +225,7 @@ def main():
             log.info('KeyboardInterrupt recieved, shutting down')
             break
         except Exception as e:
-            logger.error(str(e))
+            logger.exception("Got a runtime exception")
 
 if __name__ == "__main__":
     main()
